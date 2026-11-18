@@ -183,6 +183,18 @@ Answer one question: can a call graph built on the TypeScript compiler API follo
 - A note in `docs/validation.md`: what resolved, what did not, the schema changes needed, and a go/no-go for a full analyzer.
 - Before starting, name a real TS service to validate against. Without one, the result rests on fixtures only.
 
+### CFM-503: .NET spike (Roslyn, ASP.NET Web Site / ASMX) ✅ (2026-11-18; `asmx-legacy` all hand-written edges, 0 decoy targets, 0 compiler errors; on service C 416/416 entry points, 357 reach an outbound HTTP call, 0 calls the compiler couldn't bind; `cfm render` + viewer unchanged; verdict go; details in `docs/validation.md`)
+Answer one question: can an analyzer built on Roslyn map a legacy .NET Framework service (ASMX `[WebMethod]`, `.ashx` handlers with a homegrown route table, `new`-wired controllers, outbound HTTP to an ESB) from entry point to the outbound call, without building or running the project?
+
+**AC:**
+- A synthetic `asmx-legacy` fixture under `spike/cfm-dotnet/testdata/` (no code copied from any real repo) with an `.asmx` service, an `.ashx` handler mounted from `Global.asax`, a controller reached by `new`, a call through an interface with one unwired decoy implementation, and an outbound `HttpWebRequest`. Expected edges are written before the analyzer runs.
+- A throwaway `cfm-dotnet` (C#, Roslyn, no MSBuild, no build of the target) writes a graph that `cfm render` accepts unchanged.
+- Run on a real private service (service C). The report stays outside the repo. Only counts and patterns go into `docs/validation.md`, never names from the private code.
+- A note in `docs/validation.md`: what resolved, what did not, the schema changes needed, and a go/no-go for a full analyzer.
+
+### CFM-504: `cfm analyze` dispatches to a language analyzer (one command) ⏸ waits on CFM-503 go
+`cfm analyze <dir>` on a directory without `go.mod` but with `.sln`/`.csproj`/`.asmx`/`App_Code` runs `cfm-dotnet` from `PATH` and renders its graph. Needs a new ADR, because ADR-108 has `cfm` never start another tool.
+
 ---
 
 ## Definition of done (every task)

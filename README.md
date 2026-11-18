@@ -103,8 +103,19 @@ Typical run: 2–3 s and under 2 GB RSS for a service with 50–200 endpoints (`
 
 ### Other languages
 
-Only Go is supported. `spike/cfm-ts/` is a throwaway experiment that reads a NestJS project and writes a graph for
-`cfm render`. It isn't a supported tool. Results and gaps are in `docs/validation.md`, and the decision is ADR-108.
+Only Go is supported. Two experiments write a graph for `cfm render`. Neither is a supported tool yet:
+
+- `spike/cfm-ts/` reads a NestJS project.
+- `spike/cfm-dotnet/` reads a C# .NET Framework web app (ASMX `[WebMethod]`s, `.ashx` route tables, `Global.asax`,
+  `static Main`) with Roslyn. It never builds or runs the project.
+
+  ```bash
+  dotnet build spike/cfm-dotnet/src          # also downloads the .NET Framework reference assemblies
+  dotnet spike/cfm-dotnet/src/bin/Debug/net8.0/cfm-dotnet.dll ./MyWebSite -o graph.json
+  cfm render graph.json -o report.html
+  ```
+
+Results and gaps are in `docs/validation.md`. The decisions are ADR-108 and ADR-109.
 
 ### Trying a request body
 

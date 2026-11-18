@@ -171,3 +171,71 @@ The question: without VTA, can a TypeScript analyzer follow NestJS DI from contr
 - `new` expressions, hierarchies deeper than one level, and overrides in subclasses.
 
 **Verdict: go, on one condition.** The core risk is answered on a fixture. A full `cfm-ts` is worth starting only when a real NestJS service is available to validate against, because every number above comes from a fixture written by the same person as the analyzer.
+
+## .NET spike (CFM-503, ADR-108, ADR-109)
+
+The question: can an analyzer built on Roslyn map a legacy .NET Framework service from entry point to its outbound
+call, without building or running it?
+
+**Setup.** `spike/cfm-dotnet/` (C#, Roslyn 4.14, about 1,100 lines, `net8.0` with roll-forward, run on SDK 11.0.100)
+on the synthetic fixture `spike/cfm-dotnet/testdata/asmx-legacy`. The fixture has an `.asmx` service, an `.ashx`
+handler with a homegrown route table mounted from `Global.asax`, controllers reached by `new`, an interface field
+assigned only `new SmsNotifier()` with an unwired `EmailNotifier` decoy, an interface returned by a factory with a
+never-created `FileAuditLog` decoy, an outbound `HttpWebRequest`, and a `Backup/` folder with a second copy of a class.
+The expectations in `asmx-legacy.expected.txt` were written before the analyzer ran. `dotnet test spike/cfm-dotnet/tests`
+checks them, the §7.3 site/edge match and byte-stable output.
+
+**Fixture result.**
+
+| Check | Result |
+|---|---|
+| Hand-written edges, bodies and body tests | all found (`dotnet test`: 3/3) |
+| Decoys (`EmailNotifier`, `FileAuditLog`) as call target | 0 |
+| Interface field assigned only `new T()` | 1 target, `medium`, reason names the assignment and its line |
+| Interface from a factory | 1 target, `medium`, by Rapid Type Analysis (only `DbAuditLog` is ever created) |
+| `Backup/` | not loaded, 0 duplicate-type errors |
+| Compiler errors with the net461 reference assemblies | 0 |
+| `cfm render` | accepts the graph with no Go or viewer change |
+
+**Real service.** Service C is a private ASP.NET Web Site project on .NET Framework 4.6.1 (no `.csproj`, `App_Code/`,
+two `.asmx` services, one `.ashx` REST handler). It was read in place, and the report stayed outside the repo. As in
+the sections above, names from its code are left out.
+
+| Files | Entry points | Functions | Edges | Unresolved | Time (analysis / wall) | RSS |
+|---|---|---|---|---|---|---|
+| 630 `.cs` | 416 | 2061 | 14505 | 660 | 3.5 s / 5.3 s | 347 MB |
+
+- **Entry points: 416 of 416.** That's 412 `[WebMethod]`s (376 + 36, counted with grep), 3 route-table routes under the
+  `/api` mount from `Global.asax`, and `Application_Start`.
+- **Edges.** 13,428 `static`/`high`, 416 entry-point edges, 1 interface call resolved to its one assigned
+  implementation, and 660 `unresolved`. The code builds every controller with `new`, so nearly everything resolves
+  statically.
+- **Unresolved.** 657 of the 660 are calls on `dynamic` values (JSON responses read as `dynamic`), labelled
+  `reflection` with the reason "bound at runtime". The other 3 are delegate calls inside the route table. 0 calls are
+  ones the compiler couldn't bind, and there are 0 compiler errors.
+- **Reach.** 357 of 416 entry points reach an outbound HTTP call (`WebRequest.Create`, `HttpWebRequest.GetResponse`).
+  This is the ESB hop the flow ends at.
+- **Bodies.** 319 entry points get a request body from their parameters, and 133 conditions get a body test.
+- **Not done:** the gate-5 sampling of endpoints by a person who knows the service (CFM-301 style).
+
+**Schema changes a real analyzer needs** (not made; the spike reused existing values):
+- `edge.method`: `cha` and `rta`. The spike writes `vta` and says which one in the reason.
+- `unresolved.reason`: `dynamic` (the spike uses `reflection`).
+- A `try` flow step. The spike shows each `catch` as an `if` on "the exception was thrown".
+- `goVersion` → `language` plus toolchain (the spike writes `dotnet net461` into `goVersion`).
+- Function IDs carry parameter types, `fn:<ns>.(<Type>).<Name>(<params>)`, because C# has overloads. This is a
+  format, not a field change.
+- Entry points that aren't HTTP use `method` values `EVENT` and `MAIN`. The viewer shows them as it would a verb.
+
+**Not covered by the spike:**
+- WebForms pages (`.aspx` events);
+- Web References (SOAP proxies) linked across projects to the `[WebMethod]` they call;
+- WCF `.svc`, MVC and Web API controllers, ASP.NET Core and its DI container;
+- SSIS packages;
+- property getters and setters as call targets;
+- calls inside lambdas, which are attributed to the enclosing method;
+- constructors of external types (`new SqlCommand(...)`), which aren't call steps.
+
+**Verdict: go.** A static analyzer over Roslyn works on a real legacy service as checked out: no build, no restore of
+the target, and nothing from it runs. Next are CFM-504 (one `cfm analyze` command), then WebForms plus Web References,
+so a page click can be followed into the API.

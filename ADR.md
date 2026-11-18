@@ -111,7 +111,7 @@ The v1.1 records live in `archive/v1.1/ADR.md`. The table below gives each one's
 
 ## ADR-108: Other languages are separate analyzers that write the graph JSON
 
-**Status:** Accepted. Step 1 (`cfm render`) shipped. The TypeScript spike (CFM-502) says go, once a real NestJS service is available to validate against (`docs/validation.md`)
+**Status:** Accepted. Step 1 (`cfm render`) shipped. The TypeScript spike (CFM-502) says go, once a real NestJS service is available to validate against. The .NET spike (CFM-503, ADR-109) says go, validated on a real service (`docs/validation.md`)
 
 **Context.** Everything that makes the report useful is Go-specific: `go/packages`, SSA, VTA, the router and binder rules. Only `GRAPH_SCHEMA.md` and the viewer are language-free. TypeScript or PHP support therefore needs a new front end, built on that language's own type checker, because resolution through interfaces and DI is the reason CFM exists.
 
@@ -130,4 +130,30 @@ The v1.1 records live in `archive/v1.1/ADR.md`. The table below gives each one's
 - Each analyzer ships through its own channel (`go install`, npm, …).
 - A call graph through interfaces must be written by hand outside Go, since there is no VTA for TypeScript or PHP. This is the main risk the spike measures.
 - PHP frameworks resolve much at runtime (facades, string container keys, `Controller@method`), and `php artisan route:list` runs app code (ADR-105). A PHP analyzer would parse routes statically and leave more unresolved.
+
+## ADR-109: The .NET analyzer reads C# with Roslyn, without MSBuild
+
+**Status:** Accepted for the spike (CFM-503)
+
+**Context.** ADR-108 gives each language its own analyzer on that language's type checker. For C# that is Roslyn. The
+usual way to feed Roslyn is `MSBuildWorkspace`, but it runs a design-time build: MSBuild targets and tasks from the
+project and its NuGet packages, plus source generators. All of that is code from the analyzed project, which ADR-012
+and ADR-105 rule out. Legacy ASP.NET Web Site projects also have no `.csproj` at all.
+
+**Decision.**
+- `cfm-dotnet` builds one `CSharpCompilation` by hand. It reads `.cs` files from disk, honours an old-style `.csproj`
+  `<Compile Include>` list when there is one, and turns code in `.asmx`/`.ashx` and `Global.asax` into syntax trees,
+  with `#line` keeping locations on the real file.
+- References are metadata only: the .NET Framework reference assemblies from the NuGet cache (downloaded by
+  restoring `cfm-dotnet` itself, never the target), plus the DLLs in the target's `bin/`. If they're missing, the
+  analyzer reports `DOTNET_REFS_MISSING` as a blocker with the fix.
+- `bin`, `obj`, `packages`, `Backup` (left by Visual Studio upgrades), `.vs` and test or mock folders are skipped.
+- Interface and virtual calls resolve in this order: receiver only ever assigned `new T()`, then Rapid Type Analysis
+  over types created with `new`, then the class hierarchy at `low`. Never by name.
+
+**Consequences.**
+- Output of source generators and T4 templates that isn't checked in is invisible. That's the same trade as ADR-107,
+  and a diagnostic for it is future work.
+- `cfm-dotnet` needs the .NET SDK to build. It targets `net8.0` with roll-forward, so any SDK from 8 on works.
+- The analyzer is C#, in the repo but outside the Go module, and Go CI doesn't build it.
 

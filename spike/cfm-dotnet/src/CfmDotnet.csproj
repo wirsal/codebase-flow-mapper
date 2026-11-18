@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- cfm-dotnet: throwaway CFM-503 spike (ADR-108). Reads C# with Roslyn and writes a GRAPH_SCHEMA graph. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RollForward>LatestMajor</RollForward>
+    <AssemblyName>cfm-dotnet</AssemblyName>
+    <RootNamespace>CfmDotnet</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Reference assemblies (metadata only, never executed) so .NET Framework types bind on any OS.
+         Restore puts them in the NuGet cache, where Loader.cs looks for them. -->
+    <PackageDownload Include="Microsoft.NETFramework.ReferenceAssemblies.net461" Version="[1.0.3]" />
+    <PackageDownload Include="Microsoft.NETFramework.ReferenceAssemblies.net472" Version="[1.0.3]" />
+    <PackageDownload Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="[1.0.3]" />
+  </ItemGroup>
+</Project>

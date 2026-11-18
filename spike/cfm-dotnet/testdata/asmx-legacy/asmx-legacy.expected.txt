@@ -1,0 +1,64 @@
+# Hand-written before cfm-dotnet ran (CFM-503).
+#
+#   <source> -> <target> <method> <confidence>   the edge must exist
+#   ! <source> -> <target>                        no such edge (decoys, non-web methods)
+#   ! file <prefix>                               no node is located in a file under <prefix>
+#   body <function> <type> <binder>               the function binds that request body
+#   test <function> <cond or case label>          that if/case carries a body test that isn't just "unknown"
+#
+# Labels: an endpoint is "METHOD path", a function is its name "(Type).Method", an external is
+# "ext:<namespace>.(Type).Method" and an unresolved node is "unresolved:<call text>".
+
+# --- entry points
+POST /PaymentService.asmx/Pay -> (PaymentService).Pay framework_registration high
+POST /PaymentService.asmx/Status -> (PaymentService).GetStatus framework_registration high
+GET /api/health -> (PaymentApi).Health framework_registration medium
+POST /api/inquiry -> (InquiryAdapter).Handle framework_registration medium
+EVENT Application_Start -> (Global_asax).Application_Start framework_registration high
+! POST /PaymentService.asmx/NotExposed
+
+# --- calls: static
+(PaymentService).Pay -> (PaymentController).Pay static high
+(PaymentService).GetStatus -> (PaymentController).Status static high
+(PaymentController).Pay -> (EsbClient).Send static high
+(PaymentController).Pay -> (PaymentController).Reject static high
+(PaymentController).Pay -> (AuditLogs).Create static high
+(PaymentController).Pay -> ext:System.(String).IsNullOrEmpty static high
+(PaymentController).Pay -> ext:System.(String).ToUpper static high
+(PaymentController).Status -> (EsbClient).Send static high
+(EsbClient).Send -> (EsbClient).Post static high
+(EsbClient).Post -> ext:System.Net.(WebRequest).Create static high
+(EsbClient).Post -> ext:System.Net.(HttpWebRequest).GetResponse static high
+(SmsNotifier).Notify -> (EsbClient).Post static high
+(DbAuditLog).Write -> ext:System.Data.SqlClient.(SqlCommand).ExecuteNonQuery static high
+(PaymentApi).ProcessRequest -> (PaymentApi).GetRoutes static high
+(PaymentApi).ProcessRequest -> (Route).Dispatch static high
+(PaymentApi).GetRoutes -> (Route).Get static high
+(PaymentApi).GetRoutes -> (Route).Post static high
+(InquiryAdapter).Handle -> ext:System.Web.Script.Serialization.(JavaScriptSerializer).Deserialize static high
+(InquiryAdapter).Handle -> (PaymentController).Status static high
+(Global_asax).Application_Start -> ext:System.Web.Routing.(RouteCollection).Add static high
+
+# --- calls through an interface
+# The field is only ever assigned `new SmsNotifier()`.
+(PaymentController).Pay -> (SmsNotifier).Notify vta medium
+! (PaymentController).Pay -> (EmailNotifier).Notify
+# The receiver comes from a factory; DbAuditLog is the only IAuditLog created with `new` anywhere.
+(PaymentController).Pay -> (DbAuditLog).Write vta medium
+! (PaymentController).Pay -> (FileAuditLog).Write
+
+# --- honest gaps
+(Route).Dispatch -> unresolved:handler(context) unresolved unknown
+
+# --- exclusions: Backup/ holds a second PaymentController that must not load
+! file Backup/
+
+# --- request bodies and body tests
+body (PaymentService).Pay PayRequest WebMethod
+body (InquiryAdapter).Handle InquiryRequest Deserialize
+test (PaymentController).Pay string.IsNullOrEmpty(req.Source.Bank)
+test (PaymentController).Pay req.Express && req.Amount > 1000
+test (PaymentController).Pay "IDR"
+test (PaymentController).Pay "USD", "SGD"
+test (PaymentController).Pay default
+test (InquiryAdapter).Handle req.Kind == "status" && req.Tenor >= 12

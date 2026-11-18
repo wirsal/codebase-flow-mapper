@@ -7,3 +7,6 @@
 docs/private/
 # Reports contain the analyzed code structure; never commit them
 *.html
+# .NET build output of the spike analyzers
+spike/cfm-dotnet/**/bin/
+spike/cfm-dotnet/**/obj/
